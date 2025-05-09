@@ -141,6 +141,17 @@ public class GomokuFX extends Application {
                             updateTurnLabel();
                         });
                         break;
+                        case EXIT:
+                        String exitMsg = (String) msg.getPayload();
+                        Platform.runLater(() -> {
+                            Alert alert = new Alert(Alert.AlertType.WARNING);
+                            alert.setHeaderText("遊戲結束");
+                            alert.setContentText(exitMsg);
+                            alert.showAndWait();
+                            Platform.exit(); // 關閉程式
+                        });
+                        break;
+
                 }
             }
         } catch (Exception e) {
