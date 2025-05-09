@@ -89,7 +89,23 @@ public class GomokuFX extends Application {
         });
 
         Button exitBtn = new Button("結束遊戲");
-        exitBtn.setOnAction((e) -> primaryStage.close());
+        exitBtn.setOnAction(e -> {
+            Alert confirm = new Alert(Alert.AlertType.CONFIRMATION);
+            confirm.setTitle("結束遊戲");
+            confirm.setHeaderText("您確定要結束這場遊戲嗎？");
+            confirm.setContentText("離開後將無法返回此場對戰。");
+
+            Optional<ButtonType> result = confirm.showAndWait();
+            if (result.isPresent() && result.get() == ButtonType.OK) {
+                try {
+                    // 通知對手我退出遊戲
+                    out.writeObject(new Message(Type.EXIT, "對手已離線，遊戲結束。"));
+                } catch (IOException ex) {
+                    ex.printStackTrace();
+                }
+                Platform.exit();
+            }
+        });
 
         HBox buttonBox = new HBox(10, undoBtn, restartBtn, exitBtn);
         buttonBox.setAlignment(Pos.CENTER);
@@ -99,7 +115,7 @@ public class GomokuFX extends Application {
 
         VBox root = new VBox(10, turnBox, canvas, scoreLabel, buttonBox);
         root.setAlignment(Pos.CENTER);
-        root.setPadding(new Insets(20)); 
+        root.setPadding(new Insets(20));
         primaryStage.setScene(new Scene(root));
         primaryStage.setTitle("Hello Kitty vs Kuromi 五子棋");
         primaryStage.show();
@@ -114,7 +130,7 @@ public class GomokuFX extends Application {
                 switch (msg.getType()) {
                     case ASSIGN:
                         myId = (int) msg.getPayload();
-                        myChar = (myId == 0) ? 'X' : 'O';
+                        myChar = (myId == 1) ? 'X' : 'O';
                         break;
                     case START:
                         Platform.runLater(() -> {
@@ -136,21 +152,26 @@ public class GomokuFX extends Application {
                             if (lastWinner != '\0') {
                                 currentPlayer = (lastWinner == 'X') ? 'X' : 'O';
                             } else {
-                                currentPlayer = (myId == 0) ? 'X' : 'O';  // 第一局隨機先手
+                                currentPlayer = (myId == 1) ? 'X' : 'O'; // 第一局隨機先手
                             }
                             updateTurnLabel();
                         });
                         break;
-                        case EXIT:
+                    case EXIT:
                         String exitMsg = (String) msg.getPayload();
                         Platform.runLater(() -> {
-                            Alert alert = new Alert(Alert.AlertType.WARNING);
-                            alert.setHeaderText("遊戲結束");
+                            Alert alert = new Alert(Alert.AlertType.INFORMATION);
+                            alert.setTitle("對手已離線");
+                            alert.setHeaderText("遊戲中斷");
                             alert.setContentText(exitMsg);
-                            alert.showAndWait();
-                            Platform.exit(); // 關閉程式
+
+                            alert.setOnHidden(e -> {
+                                Platform.exit();
+                            });
+
+                            alert.show();
                         });
-                        break;
+                        return; // 結束 listen() 迴圈
 
                 }
             }
