@@ -1,0 +1,6 @@
+run.class
+com\mycompany\game\App.class
+com\mycompany\game\SystemInfo.class
+client\GomokuFX$1.class
+shared\Message$Type.class
+shared\Message.class
