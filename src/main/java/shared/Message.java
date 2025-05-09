@@ -1,13 +1,15 @@
 package shared;
+
 import java.io.Serializable;
 
 public class Message implements Serializable {
     public enum Type {
-        MOVE, RESET, START, CHAT, SYSTEM, ASSIGN, EXIT
+        MOVE, START, ASSIGN, EXIT,
+        UNDO, RESTART
     }
 
-    private Type type;
-    private Object payload;
+    private final Type type;
+    private final Object payload;
 
     public Message(Type type, Object payload) {
         this.type = type;

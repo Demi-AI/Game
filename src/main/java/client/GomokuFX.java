@@ -2,16 +2,15 @@ package client;
 
 import javafx.application.Application;
 import javafx.application.Platform;
+import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
 import javafx.scene.canvas.Canvas;
 import javafx.scene.canvas.GraphicsContext;
-import javafx.scene.control.Alert;
-import javafx.scene.control.Label;
+import javafx.scene.control.*;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
-import javafx.scene.layout.HBox;
-import javafx.scene.layout.VBox;
+import javafx.scene.layout.*;
 import javafx.scene.paint.Color;
 import javafx.stage.Stage;
 import shared.Message;
@@ -19,140 +18,163 @@ import shared.Message.Type;
 
 import java.io.*;
 import java.net.Socket;
-import java.util.Stack;
+import java.util.*;
 
 public class GomokuFX extends Application {
-    final int SIZE = 15, CELL_SIZE = 40;
-    char[][] board = new char[SIZE][SIZE];
-    char myChar = 'X';
+    final int BOARD_SIZE = 15, CELL_SIZE = 25;
+    char[][] board = new char[BOARD_SIZE][BOARD_SIZE];
+    List<int[]> moveHistory = new ArrayList<>();
     char currentPlayer = 'X';
     boolean gameOver = false;
-    boolean myTurn = false;
-    Stack<int[]> moveHistory = new Stack<>();
+    int myId;
+    char myChar;
+
     ObjectOutputStream out;
     ObjectInputStream in;
 
+    GraphicsContext gc;
     Image kittyImg, kuromiImg;
     ImageView turnImageView = new ImageView();
     Label turnLabel = new Label();
-    Label statusLabel = new Label("等待對手連線...");
+    int kittyScore = 0;
+    int kuromiScore = 0;
+    Label scoreLabel = new Label("Hello Kitty: 0 分 | Kuromi: 0 分");
 
     @Override
     public void start(Stage primaryStage) throws Exception {
-        kittyImg = new Image("file:kitty.png", 40, 40, true, true);
-        kuromiImg = new Image("file:Kuromi.png", 40, 40, true, true);
+        Socket socket = new Socket("localhost", 5000);
+        out = new ObjectOutputStream(socket.getOutputStream());
+        in = new ObjectInputStream(socket.getInputStream());
 
-        Canvas canvas = new Canvas(SIZE * CELL_SIZE, SIZE * CELL_SIZE);
-        GraphicsContext gc = canvas.getGraphicsContext2D();
-        drawBoard(gc);
+        kittyImg = new Image(getClass().getResourceAsStream("kitty.png"), 40, 40, true, true);
+        kuromiImg = new Image(getClass().getResourceAsStream("Kuromi.png"), 40, 40, true, true);
 
-        turnLabel.setText("輪到：Hello Kitty");
-        turnImageView.setImage(kittyImg);
-        turnImageView.setFitWidth(32);
-        turnImageView.setFitHeight(32);
+        Canvas canvas = new Canvas(BOARD_SIZE * CELL_SIZE, BOARD_SIZE * CELL_SIZE);
+        gc = canvas.getGraphicsContext2D();
+        drawBoard();
+
+        canvas.setOnMouseClicked(e -> {
+            if (gameOver || currentPlayer != myChar)
+                return;
+            int col = (int) (e.getX() / CELL_SIZE);
+            int row = (int) (e.getY() / CELL_SIZE);
+            if (board[row][col] == '\0') {
+                try {
+                    out.writeObject(new Message(Type.MOVE, new int[] { row, col }));
+                } catch (IOException ex) {
+                    ex.printStackTrace();
+                }
+            }
+        });
+
+        Button undoBtn = new Button("悔棋");
+        undoBtn.setOnAction(e -> {
+            try {
+                out.writeObject(new Message(Type.UNDO, null));
+            } catch (IOException ex) {
+                ex.printStackTrace();
+            }
+        });
+
+        Button restartBtn = new Button("重新開始");
+        restartBtn.setOnAction(e -> {
+            try {
+                out.writeObject(new Message(Type.RESTART, null));
+            } catch (IOException ex) {
+                ex.printStackTrace();
+            }
+        });
+
+        Button exitBtn = new Button("結束遊戲");
+        exitBtn.setOnAction((e) -> primaryStage.close());
+
+        HBox buttonBox = new HBox(10, undoBtn, restartBtn, exitBtn);
+        buttonBox.setAlignment(Pos.CENTER);
 
         HBox turnBox = new HBox(10, turnLabel, turnImageView);
         turnBox.setAlignment(Pos.CENTER);
 
-        canvas.setOnMouseClicked(e -> {
-            if (!myTurn || gameOver)
-                return;
-            int col = (int) (e.getX() / CELL_SIZE);
-            int row = (int) (e.getY() / CELL_SIZE);
-            if (board[row][col] != '\0')
-                return;
-
-            board[row][col] = myChar;
-            moveHistory.push(new int[] { row, col });
-            drawBoard(gc);
-            myTurn = false;
-            sendMessage(new Message(Type.MOVE, new int[] { row, col }));
-
-            if (isWin(row, col, myChar)) {
-                gameOver = true;
-                showAlert("你獲勝了！");
-                sendMessage(new Message(Type.SYSTEM, "對手已輸"));
-            }
-        });
-
-        VBox root = new VBox(10, turnBox, canvas, statusLabel);
+        VBox root = new VBox(10, turnBox, canvas, scoreLabel, buttonBox);
         root.setAlignment(Pos.CENTER);
+        root.setPadding(new Insets(20)); 
         primaryStage.setScene(new Scene(root));
-        primaryStage.setTitle("五子棋線上對戰");
+        primaryStage.setTitle("Hello Kitty vs Kuromi 五子棋");
         primaryStage.show();
 
-        new Thread(this::setupConnection).start();
+        new Thread(this::listen).start();
     }
 
-    void setupConnection() {
+    private void listen() {
         try {
-            Socket socket = new Socket("localhost", 5000);
-            out = new ObjectOutputStream(socket.getOutputStream());
-            in = new ObjectInputStream(socket.getInputStream());
-
-            while (true) {
-                Message msg = (Message) in.readObject();
+            Message msg;
+            while ((msg = (Message) in.readObject()) != null) {
                 switch (msg.getType()) {
                     case ASSIGN:
-                        int id = (Integer) msg.getPayload();
-                        myChar = (id == 0) ? 'X' : 'O';
-                        Platform.runLater(
-                                () -> statusLabel.setText("你是 " + (myChar == 'X' ? "Hello Kitty" : "Kuromi")));
+                        myId = (int) msg.getPayload();
+                        myChar = (myId == 0) ? 'X' : 'O';
                         break;
                     case START:
                         Platform.runLater(() -> {
-                            myTurn = (myChar == 'X');
-                            statusLabel.setText("遊戲開始！");
+                            updateTurnLabel();
                         });
                         break;
                     case MOVE:
                         int[] move = (int[]) msg.getPayload();
-                        Platform.runLater(() -> {
-                            board[move[0]][move[1]] = (myChar == 'X') ? 'O' : 'X';
-                            drawBoard(((Canvas) ((VBox) statusLabel.getParent()).getChildren().get(1))
-                                    .getGraphicsContext2D());
-                            myTurn = true;
-                        });
+                        Platform.runLater(() -> applyMove(move));
                         break;
-                    case SYSTEM:
+                    case UNDO:
+                        Platform.runLater(this::undoMove);
+                        break;
+                    case RESTART:
                         Platform.runLater(() -> {
-                            gameOver = true;
-                            showAlert("你輸了！");
+                            resetBoard();
+                            drawBoard();
                         });
                         break;
                 }
             }
         } catch (Exception e) {
-            Platform.runLater(() -> {
-                showAlert("連線失敗: " + e.getMessage());
-                e.printStackTrace();
-            });
-        }
-    }
-
-    void sendMessage(Message msg) {
-        try {
-            out.writeObject(msg);
-            out.flush();
-        } catch (IOException e) {
             e.printStackTrace();
         }
     }
 
-    void drawBoard(GraphicsContext gc) {
-        gc.setFill(Color.BEIGE);
-        gc.fillRect(0, 0, SIZE * CELL_SIZE, SIZE * CELL_SIZE);
-        gc.setStroke(Color.BLACK);
-
-        for (int i = 0; i < SIZE; i++) {
-            gc.strokeLine(CELL_SIZE / 2, CELL_SIZE / 2 + i * CELL_SIZE,
-                    CELL_SIZE / 2 + (SIZE - 1) * CELL_SIZE, CELL_SIZE / 2 + i * CELL_SIZE);
-            gc.strokeLine(CELL_SIZE / 2 + i * CELL_SIZE, CELL_SIZE / 2,
-                    CELL_SIZE / 2 + i * CELL_SIZE, CELL_SIZE / 2 + (SIZE - 1) * CELL_SIZE);
+    void applyMove(int[] move) {
+        int row = move[0], col = move[1];
+        if (board[row][col] != '\0')
+            return;
+        board[row][col] = currentPlayer;
+        moveHistory.add(move);
+        drawBoard();
+        if (checkWin(row, col, currentPlayer)) {
+            gameOver = true;
+            showWinner(currentPlayer);
         }
+        currentPlayer = (currentPlayer == 'X') ? 'O' : 'X';
+        updateTurnLabel();
+    }
 
-        for (int i = 0; i < SIZE; i++)
-            for (int j = 0; j < SIZE; j++) {
+    void updateTurnLabel() {
+        if (currentPlayer == 'X') {
+            turnLabel.setText("輪到：Hello Kitty");
+            turnImageView.setImage(kittyImg);
+        } else {
+            turnLabel.setText("輪到：Kuromi");
+            turnImageView.setImage(kuromiImg);
+        }
+    }
+
+    void drawBoard() {
+        gc.setFill(Color.BEIGE);
+        gc.fillRect(0, 0, BOARD_SIZE * CELL_SIZE, BOARD_SIZE * CELL_SIZE);
+        gc.setStroke(Color.BLACK);
+        for (int i = 0; i < BOARD_SIZE; i++) {
+            gc.strokeLine(CELL_SIZE / 2, CELL_SIZE / 2 + i * CELL_SIZE,
+                    CELL_SIZE / 2 + (BOARD_SIZE - 1) * CELL_SIZE, CELL_SIZE / 2 + i * CELL_SIZE);
+            gc.strokeLine(CELL_SIZE / 2 + i * CELL_SIZE, CELL_SIZE / 2,
+                    CELL_SIZE / 2 + i * CELL_SIZE, CELL_SIZE / 2 + (BOARD_SIZE - 1) * CELL_SIZE);
+        }
+        for (int i = 0; i < BOARD_SIZE; i++) {
+            for (int j = 0; j < BOARD_SIZE; j++) {
                 double x = j * CELL_SIZE + CELL_SIZE / 2 - 16;
                 double y = i * CELL_SIZE + CELL_SIZE / 2 - 16;
                 if (board[i][j] == 'X')
@@ -160,34 +182,61 @@ public class GomokuFX extends Application {
                 else if (board[i][j] == 'O')
                     gc.drawImage(kuromiImg, x, y);
             }
-    }
-
-    boolean isWin(int row, int col, char player) {
-        return check(row, col, player, 1, 0) || check(row, col, player, 0, 1) ||
-                check(row, col, player, 1, 1) || check(row, col, player, 1, -1);
-    }
-
-    boolean check(int row, int col, char player, int dx, int dy) {
-        int count = 1;
-        for (int i = 1; i < 5; i++) {
-            int r = row + i * dx, c = col + i * dy;
-            if (r < 0 || r >= SIZE || c < 0 || c >= SIZE || board[r][c] != player)
-                break;
-            count++;
         }
-        for (int i = 1; i < 5; i++) {
-            int r = row - i * dx, c = col - i * dy;
-            if (r < 0 || r >= SIZE || c < 0 || c >= SIZE || board[r][c] != player)
-                break;
-            count++;
-        }
-        return count >= 5;
     }
 
-    void showAlert(String msg) {
+    void resetBoard() {
+        for (int i = 0; i < BOARD_SIZE; i++)
+            Arrays.fill(board[i], '\0');
+        moveHistory.clear();
+        currentPlayer = 'X';
+        gameOver = false;
+        updateTurnLabel();
+    }
+
+    void undoMove() {
+        if (!moveHistory.isEmpty()) {
+            int[] last = moveHistory.remove(moveHistory.size() - 1);
+            board[last[0]][last[1]] = '\0';
+            currentPlayer = (currentPlayer == 'X') ? 'O' : 'X';
+            drawBoard();
+            updateTurnLabel();
+        }
+    }
+
+    boolean checkWin(int r, int c, char p) {
+        return count(r, c, 1, 0, p) + count(r, c, -1, 0, p) >= 4 ||
+                count(r, c, 0, 1, p) + count(r, c, 0, -1, p) >= 4 ||
+                count(r, c, 1, 1, p) + count(r, c, -1, -1, p) >= 4 ||
+                count(r, c, 1, -1, p) + count(r, c, -1, 1, p) >= 4;
+    }
+
+    int count(int r, int c, int dr, int dc, char p) {
+        int cnt = 0;
+        for (int i = 1; i < 5; i++) {
+            int nr = r + i * dr, nc = c + i * dc;
+            if (nr < 0 || nr >= BOARD_SIZE || nc < 0 || nc >= BOARD_SIZE || board[nr][nc] != p)
+                break;
+            cnt++;
+        }
+        return cnt;
+    }
+
+    void showWinner(char p) {
+        String name;
+        if (p == 'X') {
+            name = "Hello Kitty";
+            kittyScore++;
+        } else {
+            name = "Kuromi";
+            kuromiScore++;
+        }
+
+        scoreLabel.setText("Hello Kitty: " + kittyScore + " 分 | Kuromi: " + kuromiScore + " 分");
+
         Alert alert = new Alert(Alert.AlertType.INFORMATION);
-        alert.setTitle("遊戲結果");
-        alert.setHeaderText(msg);
+        alert.setHeaderText(name + " 獲勝！");
+        alert.setContentText("恭喜！");
         alert.showAndWait();
     }
 }
