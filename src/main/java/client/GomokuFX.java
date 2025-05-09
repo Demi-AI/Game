@@ -40,6 +40,9 @@ public class GomokuFX extends Application {
     int kuromiScore = 0;
     Label scoreLabel = new Label("Hello Kitty: 0 分 | Kuromi: 0 分");
 
+    // 用來記錄上一局的勝者
+    private char lastWinner = '\0';
+
     @Override
     public void start(Stage primaryStage) throws Exception {
         Socket socket = new Socket("localhost", 5000);
@@ -129,6 +132,13 @@ public class GomokuFX extends Application {
                         Platform.runLater(() -> {
                             resetBoard();
                             drawBoard();
+                            // 根據上一局的勝者決定先手
+                            if (lastWinner != '\0') {
+                                currentPlayer = (lastWinner == 'X') ? 'X' : 'O';
+                            } else {
+                                currentPlayer = (myId == 0) ? 'X' : 'O';  // 第一局隨機先手
+                            }
+                            updateTurnLabel();
                         });
                         break;
                 }
@@ -148,6 +158,8 @@ public class GomokuFX extends Application {
         if (checkWin(row, col, currentPlayer)) {
             gameOver = true;
             showWinner(currentPlayer);
+            // 記錄勝者
+            lastWinner = currentPlayer;
         }
         currentPlayer = (currentPlayer == 'X') ? 'O' : 'X';
         updateTurnLabel();
@@ -189,9 +201,7 @@ public class GomokuFX extends Application {
         for (int i = 0; i < BOARD_SIZE; i++)
             Arrays.fill(board[i], '\0');
         moveHistory.clear();
-        currentPlayer = 'X';
         gameOver = false;
-        updateTurnLabel();
     }
 
     void undoMove() {
