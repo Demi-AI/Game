@@ -35,12 +35,13 @@ public class GomokuFX extends Application {
     GraphicsContext gc;
     Image kittyImg, kuromiImg;
     ImageView turnImageView = new ImageView();
+    ImageView playerImageView = new ImageView();
     Label turnLabel = new Label();
+    Label playerLabel = new Label();
     int kittyScore = 0;
     int kuromiScore = 0;
     Label scoreLabel = new Label("Hello Kitty: 0 分 | Kuromi: 0 分");
 
-    // 用來記錄上一局的勝者
     private char lastWinner = '\0';
 
     @Override
@@ -49,8 +50,8 @@ public class GomokuFX extends Application {
         out = new ObjectOutputStream(socket.getOutputStream());
         in = new ObjectInputStream(socket.getInputStream());
 
-        kittyImg = new Image(getClass().getResourceAsStream("kitty.png"), 40, 40, true, true);
-        kuromiImg = new Image(getClass().getResourceAsStream("Kuromi.png"), 40, 40, true, true);
+        kittyImg = new Image(getClass().getResourceAsStream("kitty.png"), 35, 35, true, true);
+        kuromiImg = new Image(getClass().getResourceAsStream("Kuromi.png"), 35, 35, true, true);
 
         Canvas canvas = new Canvas(BOARD_SIZE * CELL_SIZE, BOARD_SIZE * CELL_SIZE);
         gc = canvas.getGraphicsContext2D();
@@ -63,7 +64,7 @@ public class GomokuFX extends Application {
             int row = (int) (e.getY() / CELL_SIZE);
             if (board[row][col] == '\0') {
                 try {
-                    out.writeObject(new Message(Type.MOVE, new int[] { row, col }));
+                    out.writeObject(new Message(Type.MOVE, new int[]{row, col}));
                 } catch (IOException ex) {
                     ex.printStackTrace();
                 }
@@ -92,13 +93,12 @@ public class GomokuFX extends Application {
         exitBtn.setOnAction(e -> {
             Alert confirm = new Alert(Alert.AlertType.CONFIRMATION);
             confirm.setTitle("結束遊戲");
-            confirm.setHeaderText("您確定要結束這場遊戲嗎？");
-            confirm.setContentText("離開後將無法返回此場對戰。");
+            confirm.setHeaderText("您確定要結束這場遊戲嗎？確定不分出個勝負嗎？");
+            confirm.setContentText("離開後將無法返回此場對戰喔！");
 
             Optional<ButtonType> result = confirm.showAndWait();
             if (result.isPresent() && result.get() == ButtonType.OK) {
                 try {
-                    // 通知對手我退出遊戲
                     out.writeObject(new Message(Type.EXIT, "對手已離線，遊戲結束。"));
                 } catch (IOException ex) {
                     ex.printStackTrace();
@@ -110,10 +110,21 @@ public class GomokuFX extends Application {
         HBox buttonBox = new HBox(10, undoBtn, restartBtn, exitBtn);
         buttonBox.setAlignment(Pos.CENTER);
 
-        HBox turnBox = new HBox(10, turnLabel, turnImageView);
+        HBox playerBox = new HBox(5, playerLabel, playerImageView, turnLabel, turnImageView);
+        playerLabel.setStyle("-fx-font-size: 18px; -fx-font-weight: bold;");
+        playerImageView.setFitHeight(40);
+        playerImageView.setFitWidth(40);
+        playerBox.setAlignment(Pos.CENTER);
+
+        HBox turnBox = new HBox(5, turnLabel, turnImageView);
+        turnImageView.setFitHeight(25);
+        turnImageView.setFitWidth(25);
         turnBox.setAlignment(Pos.CENTER);
 
-        VBox root = new VBox(10, turnBox, canvas, scoreLabel, buttonBox);
+        HBox Box = new HBox(60, playerBox, turnBox);
+        Box.setAlignment(Pos.CENTER);
+
+        VBox root = new VBox(10, Box, canvas, scoreLabel, buttonBox);
         root.setAlignment(Pos.CENTER);
         root.setPadding(new Insets(20));
         primaryStage.setScene(new Scene(root));
@@ -131,11 +142,13 @@ public class GomokuFX extends Application {
                     case ASSIGN:
                         myId = (int) msg.getPayload();
                         myChar = (myId == 1) ? 'X' : 'O';
+                        Platform.runLater(() -> {
+                            playerLabel.setText("我是玩家 " + myId);
+                            playerImageView.setImage(myId == 1 ? kittyImg : kuromiImg);
+                        });
                         break;
                     case START:
-                        Platform.runLater(() -> {
-                            updateTurnLabel();
-                        });
+                        Platform.runLater(this::updateTurnLabel);
                         break;
                     case MOVE:
                         int[] move = (int[]) msg.getPayload();
@@ -148,11 +161,10 @@ public class GomokuFX extends Application {
                         Platform.runLater(() -> {
                             resetBoard();
                             drawBoard();
-                            // 根據上一局的勝者決定先手
                             if (lastWinner != '\0') {
-                                currentPlayer = (lastWinner == 'X') ? 'X' : 'O';
+                                currentPlayer = lastWinner;
                             } else {
-                                currentPlayer = (myId == 1) ? 'X' : 'O'; // 第一局隨機先手
+                                currentPlayer = (myId == 1) ? 'X' : 'O';
                             }
                             updateTurnLabel();
                         });
@@ -162,17 +174,12 @@ public class GomokuFX extends Application {
                         Platform.runLater(() -> {
                             Alert alert = new Alert(Alert.AlertType.INFORMATION);
                             alert.setTitle("對手已離線");
-                            alert.setHeaderText("遊戲中斷");
+                            alert.setHeaderText("遊戲中斷了！");
                             alert.setContentText(exitMsg);
-
-                            alert.setOnHidden(e -> {
-                                Platform.exit();
-                            });
-
+                            alert.setOnHidden(e -> Platform.exit());
                             alert.show();
                         });
-                        return; // 結束 listen() 迴圈
-
+                        return;
                 }
             }
         } catch (Exception e) {
@@ -182,15 +189,13 @@ public class GomokuFX extends Application {
 
     void applyMove(int[] move) {
         int row = move[0], col = move[1];
-        if (board[row][col] != '\0')
-            return;
+        if (board[row][col] != '\0') return;
         board[row][col] = currentPlayer;
         moveHistory.add(move);
         drawBoard();
         if (checkWin(row, col, currentPlayer)) {
             gameOver = true;
             showWinner(currentPlayer);
-            // 記錄勝者
             lastWinner = currentPlayer;
         }
         currentPlayer = (currentPlayer == 'X') ? 'O' : 'X';
@@ -274,11 +279,12 @@ public class GomokuFX extends Application {
             kuromiScore++;
         }
 
-        scoreLabel.setText("Hello Kitty: " + kittyScore + " 分 | Kuromi: " + kuromiScore + " 分");
+        scoreLabel.setText("Hello Kitty: " + kittyScore + " 分  |  Kuromi: " + kuromiScore + " 分");
 
         Alert alert = new Alert(Alert.AlertType.INFORMATION);
-        alert.setHeaderText(name + " 獲勝！");
-        alert.setContentText("恭喜！");
+        alert.setTitle("遊戲結果");
+        alert.setHeaderText("恭喜 " + name + " 獲勝！");
+        alert.setContentText("下一場由贏家 " + name + " 先開始。");
         alert.showAndWait();
     }
 }

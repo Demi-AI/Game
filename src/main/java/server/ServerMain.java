@@ -21,8 +21,8 @@ public class ServerMain {
 
             synchronized (clients) {
                 if (clients.size() >= MAX_PLAYERS) {
-                    System.out.println("已達到最大連線人數，拒絕新玩家的連線");
-                    sendMessage(socket, new Message(Type.EXIT, "遊戲已滿，無法加入"));
+                    System.out.println("已達到最大連線人數，拒絕新玩家的連線。");
+                    sendMessage(socket, new Message(Type.EXIT, "遊戲已滿，無法加入。"));
                     socket.close();
                     continue;
                 }
@@ -39,7 +39,7 @@ public class ServerMain {
                             while (clients.stream().anyMatch(c -> !c.isReady())) {
                                 Thread.sleep(100);
                             }
-                            broadcast(new Message(Type.START, "遊戲開始"));
+                            broadcast(new Message(Type.START, "遊戲開始！"));
                             System.out.println("已通知所有玩家：遊戲開始！");
                         } catch (InterruptedException e) {
                             e.printStackTrace();
@@ -114,7 +114,7 @@ public class ServerMain {
                     }
                 }
             } catch (IOException | ClassNotFoundException e) {
-                System.out.println("玩家 " + playerId + " 離線");
+                System.out.println("玩家 " + playerId + " 已離線。");
             } finally {
                 handlePlayerDisconnection();
             }
@@ -125,7 +125,7 @@ public class ServerMain {
                 clients.remove(this);
                 if (!clients.isEmpty()) {
                     ClientHandler remaining = clients.get(0);
-                    remaining.send(new Message(Type.EXIT, "另一位玩家已斷線，遊戲結束，請重新連線"));
+                    remaining.send(new Message(Type.EXIT, "另一位玩家已斷線，遊戲結束，請重新連線加入。"));
                 }
                 clients.clear();
                 System.out.println("遊戲重置，等待玩家重新連線...");
