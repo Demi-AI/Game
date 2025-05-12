@@ -46,7 +46,18 @@ public class GomokuFX extends Application {
 
     @Override
     public void start(Stage primaryStage) throws Exception {
-        Socket socket = new Socket("localhost", 5000);
+        // Socket socket = new Socket("localhost", 5000);
+        TextInputDialog dialog = new TextInputDialog("localhost");
+        dialog.setTitle("輸入伺服器 IP 位址");
+        dialog.setHeaderText("請輸入伺服器的 IP 位址（例如：192.168.x.x）");
+        Optional<String> IPresult = dialog.showAndWait();
+        if (!IPresult.isPresent()) {
+            Platform.exit();
+            return;
+        }
+
+        Socket socket = new Socket(IPresult.get(), 5000);
+        
         out = new ObjectOutputStream(socket.getOutputStream());
         in = new ObjectInputStream(socket.getInputStream());
 
